@@ -1,6 +1,8 @@
 import {writeFile, mkdir} from "fs/promises";
 import path from "path";
 
+import {readFile, access} from "fs/promises";
+
 async function getCoordinates(city) {       // получение координат по названию города
     
     const url = new URL ("https://geocoding-api.open-meteo.com/v1/search");     // сборка URL через объекты URL
@@ -62,10 +64,30 @@ async function fetchWithTimeout(url, timeout = 5000) {      // добавляю 
     }
 }
 
-async function processCity(city, days){
+async function getCachedReport (city){
+    const today = new Date().toISOString().split("T")[0];
+    const safeCity = city.replace(/[^a-zA-Za-яА-Я0-9]/g, "_");
+    const filepath = path.join ("reports", `${safeCity}-${today}.json`);
+
+    try {
+        await access(filepath);
+        const content = await readFile(filepath, "utf-8");
+        return JSON.parse(content);
+    } catch {
+        return null;
+    }
+}
+async function processCity(city, days, noCache){
+    if (!noCache){
+        const cached = await getCachedReport(city);
+        if (cached) {
+            return {cached: true, report: cached};
+        }
+    }
+    
     const coords = await getCoordinates(city);
-    const forecast = await getForecast (coords.latitude, coords.longitude, days);
-    return {coords, forecast};
+    const forecast = await getForecast(coords.latitude, coords.longitude, days);
+    return {cached: false, coords, forecast};
 }
 
 async function saveReport (city, data) {
@@ -87,6 +109,7 @@ let cities = [];
 let days = 3;
 const errors = []; 
 const notices = []; 
+let noCache = false;
 
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -106,6 +129,8 @@ for (let i = 0; i < args.length; i++) {
         days = Number(value);
         i++;
     }
+} else if (arg == "--no-cache"){
+    noCache = true;
 }
 }
 if (cities.length == 0) {       // город не указан (пустое поле ввода) - выкидывает ошибку
@@ -130,14 +155,21 @@ console.log(`${someCity}: ${cities.join(" , ")}`);
 const someDay = days == 1 ? "День" : "Дней";        // добавил корректность вывода ед. и мн. числа days
 console.log(`${someDay}: ${days}`);
 
+
 const results = await Promise.allSettled(
-    cities.map(city => processCity(city, days))
+    cities.map(city => processCity(city, days, noCache))
 );
 
 for (let i=0; i < results.length; i++) {
     const result = results [i];
+
     if (result.status == "fulfilled") {
         console.log("== " + cities[i] + " ==");
+
+        if (result.value.cached) {
+        console.log("(из кэша)");
+        console.log(result.value.report);    
+        } else {
         console.log("Координаты: ", result.value.coords);
         console.log("Прогноз: ", result.value.forecast);
 
@@ -152,11 +184,13 @@ for (let i=0; i < results.length; i++) {
     };
     const filepath = await saveReport (cities[i], report);
     console.log("Отчет сохранен:", filepath);
+}
 } else{
     console.error("Ошибка для города " + cities[i] + ": " + result.reason.message);
 }
 }
 }
+
 main().catch(error => {
     console.error ("Ошибка: ", error.message);
     process.exit(1);
