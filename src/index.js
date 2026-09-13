@@ -1,4 +1,7 @@
-async function getCoordinates(city) { // получение координат по названию города
+import {writeFile, mkdir} from "fs/promises";
+import path from "path";
+
+async function getCoordinates(city) {       // получение координат по названию города
     
     const url = new URL ("https://geocoding-api.open-meteo.com/v1/search");     // сборка URL через объекты URL
     url.searchParams.set("name", city);
@@ -22,8 +25,8 @@ async function getCoordinates(city) { // получение координат �
     
 }
 
-async function getForecast(latitude, longitude, days) {
-    const url= new URL ("https://api.open-meteo.com/v1/forecast");
+async function getForecast(latitude, longitude, days) {         // обработка город = прогноз
+    const url= new URL ("https://api.open-meteo.com/v1/forecast");      // разворачиваю страницу ТЗ на переменные 
     url.searchParams.set("latitude", latitude);
     url.searchParams.set("longitude", longitude);
     url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum");
@@ -31,7 +34,7 @@ async function getForecast(latitude, longitude, days) {
     url.searchParams.set("timezone", "auto");
 
     const response = await fetchWithTimeout(url.toString());
-    if (response.status >= 400 && response.status < 500){
+    if (response.status >= 400 && response.status < 500){ // 4xx и 5xx
         throw new Error ("Прогноз: некорректный запрос (код " + response.status + ")");
     }
     if (response.status >= 500) {
@@ -58,6 +61,24 @@ async function fetchWithTimeout(url, timeout = 5000) {      // добавляю 
         clearTimeout (timer);    // если запрос завершился, отменяется таймер
     }
 }
+
+async function processCity(city, days){
+    const coords = await getCoordinates(city);
+    const forecast = await getForecast (coords.latitude, coords.longitude, days);
+    return {coords, forecast};
+}
+
+async function saveReport (city, data) {
+    const today = new Date().toISOString().split("T")[0];
+    const safeCity = city.replace(/[^a-zA-Za-яА-Я0-9]/g, "_");
+    const filename = `${safeCity}-${today}.json`;
+    const filepath = path.join ("reports", filename);
+
+    await mkdir ("reports", {recursive: true});
+    await writeFile (filepath, JSON.stringify(data, null, 2), "utf-8");
+    return filepath;
+}
+
 
 async function main() {         // реструктурировал код
 
@@ -109,12 +130,33 @@ console.log(`${someCity}: ${cities.join(" , ")}`);
 const someDay = days == 1 ? "День" : "Дней";        // добавил корректность вывода ед. и мн. числа days
 console.log(`${someDay}: ${days}`);
 
-const coords = await getCoordinates(cities[0]);
-console.log("Координаты:", coords);
-const forecast = await getForecast(coords.latitude, coords.longitude, days);
-console.log("Прогноз: ", forecast);
-}
+const results = await Promise.allSettled(
+    cities.map(city => processCity(city, days))
+);
 
+for (let i=0; i < results.length; i++) {
+    const result = results [i];
+    if (result.status == "fulfilled") {
+        console.log("== " + cities[i] + " ==");
+        console.log("Координаты: ", result.value.coords);
+        console.log("Прогноз: ", result.value.forecast);
+
+    const report = {
+        city: result.value.coords.name,
+        country: result.value.coords.country,
+        latitude: result.value.coords.latitude,
+        longitude: result.value.coords.longitude,
+        days: days,
+        date: new Date().toISOString().split("T")[0],
+        forecast: result.value.forecast
+    };
+    const filepath = await saveReport (cities[i], report);
+    console.log("Отчет сохранен:", filepath);
+} else{
+    console.error("Ошибка для города " + cities[i] + ": " + result.reason.message);
+}
+}
+}
 main().catch(error => {
     console.error ("Ошибка: ", error.message);
     process.exit(1);
