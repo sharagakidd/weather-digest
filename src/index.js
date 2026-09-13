@@ -64,7 +64,7 @@ async function fetchWithTimeout(url, timeout = 5000) {      // добавляю 
     }
 }
 
-async function getCachedReport (city){
+async function getCachedReport (city, days){
     const today = new Date().toISOString().split("T")[0];
     const safeCity = city.replace(/[^a-zA-Za-яА-Я0-9]/g, "_");
     const filepath = path.join ("reports", `${safeCity}-${today}.json`);
@@ -72,14 +72,20 @@ async function getCachedReport (city){
     try {
         await access(filepath);
         const content = await readFile(filepath, "utf-8");
-        return JSON.parse(content);
+        const report = JSON.parse(content);
+
+        if (report.requstedDays !== days) return null;
+        if (!report.location) return null;
+        if (!report.forecast) return null;
+
+        return report;
     } catch {
         return null;
     }
 }
 async function processCity(city, days, noCache){
     if (!noCache){
-        const cached = await getCachedReport(city);
+        const cached = await getCachedReport(city, days);
         if (cached) {
             return {cached: true, report: cached};
         }
@@ -174,11 +180,13 @@ for (let i=0; i < results.length; i++) {
         console.log("Прогноз: ", result.value.forecast);
 
     const report = {
+        location: {
         city: result.value.coords.name,
         country: result.value.coords.country,
         latitude: result.value.coords.latitude,
         longitude: result.value.coords.longitude,
-        days: days,
+        },
+        requestedDays: days,
         date: new Date().toISOString().split("T")[0],
         forecast: result.value.forecast
     };
