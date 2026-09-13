@@ -1,5 +1,27 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+async function fetchWithTimout(url, timeout = 5000) {
+    
+    const controller = new AboutController();
+    const timer = setTimeout (() => controller.abort (), timeout);
+    
+    try {
+        const response = await fetch (url, {signal: controller.signal});
+        return response;
+    } catch (error) {
+        if (error.name == "AboutError") {
+            throw new Error ("Превышено время ожидания от API");
+        }
+        throw new Error ("Сетевая ошибка: " + error.message);
+    } finally {
+        clearTimeout (timer);
+    }
+}
+
+async function main() {
+>>>>>>> 342bf31 (feat(api): add fetchWithTimeout with AbortController)
 
 
 
