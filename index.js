@@ -1,3 +1,5 @@
+async function main() {
+
 const args = process.argv.slice(2); // slice обрасывает два служебных элемента (2)
 let cities = [];
 let days = 3;
@@ -42,4 +44,9 @@ if (errors.length > 0) {
 const someCity =cities.length == 1 ? "Город" : "Города";
 console.log(`${someCity}: ${cities.join(" , ")}`);
 console.log(`Дней: ${days}`);
+}
 
+main().catch(error => {
+    console.error ("Ошибка: ", error.message);
+    process.exit(1);
+});
