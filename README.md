@@ -8,7 +8,7 @@
 
 ## Установка 
 
-git clone <URL>
+git clone <[URL](https://github.com/sharagakidd/weather-digest)>
 cd weather-digest
 cp. .env.example .env
 
